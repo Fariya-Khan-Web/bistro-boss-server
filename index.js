@@ -1,5 +1,6 @@
 const express = require("express");
 const cors = require("cors");
+var jwt = require('jsonwebtoken');
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 const app = express()
 require('dotenv').config()
@@ -8,6 +9,21 @@ const port = process.env.PORT || 2000;
 // middlewere
 app.use(cors())
 app.use(express.json())
+const varifyToken = (req, res, next) =>{
+    console.log('inside verify token', req.headers)
+    if(!req.headers.authorization){
+        return res.status(401).send({ message: 'forbidden access'})
+    }
+    const token = req.headers.authorization.split(' ')[1];
+    jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, decoded) => {
+        if(err){
+            return res.status(401).send({ message: 'forbidden access'})
+        }
+        req.decoded = decoded
+        next(); 
+    })
+}
+
 
 
 const uri = `mongodb+srv://${process.env.USER_DB}:${process.env.PASS_DB}@cluster0.mhwjc.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
@@ -34,9 +50,18 @@ async function run() {
         const cartCollection = database.collection('cartItems')
 
 
+        // jwt related token
+        app.post('/jwt', async(req, res)=>{
+            const user = req.body
+            const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, {expiresIn: '1h'})
+            res.send({token})
+        })
+
+
         // user related api
 
-        app.get('/users', async(req, res)=>{
+        app.get('/users', varifyToken, async(req, res)=>{
+            console.log(req.headers)
             const result = await userCollection.find().toArray()
             res.send(result)
         })
