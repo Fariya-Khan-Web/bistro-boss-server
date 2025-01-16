@@ -244,7 +244,16 @@ async function run() {
 
         })
 
+        
+        
         // transactions
+        app.get('/payments/:email',verifyToken, async(req, res)=>{
+            const email = req.params.email
+            const query = {email : email}
+            const result = await paymentCollection.find(query).toArray()
+            res.send(result)
+        })
+
         app.post('/payments',verifyToken, async (req, res) => {
             const payment = req.body
             const payResult = await paymentCollection.insertOne(payment)
@@ -259,6 +268,8 @@ async function run() {
 
             res.send({payResult, deleteResult})
         })
+
+
 
 
         // Send a ping to confirm a successful connection
