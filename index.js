@@ -1,9 +1,10 @@
 const express = require("express");
 const cors = require("cors");
-var jwt = require('jsonwebtoken');
-const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
-const app = express()
 require('dotenv').config()
+const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
+var jwt = require('jsonwebtoken');
+const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
+const app = express()
 const port = process.env.PORT || 2000;
 
 // middlewere
@@ -34,6 +35,7 @@ async function run() {
         const menuCollection = database.collection('menu')
         const reviewCollection = database.collection('testimonials')
         const cartCollection = database.collection('cartItems')
+        const paymentCollection = database.collection('payments')
 
 
 
@@ -98,6 +100,7 @@ async function run() {
             res.send(result)
         })
 
+        // make admin
         app.patch('/dashboard/admin/:id', async (req, res) => {
             const id = req.params.id
             const filter = { _id: new ObjectId(id) }
@@ -159,7 +162,7 @@ async function run() {
                     category: item.category,
                     price: item.price,
                     recipe: item.recipe,
-                   
+
                 },
             };
             const options = { upsert: true }
@@ -196,7 +199,7 @@ async function run() {
             res.send(result)
         })
 
-        app.get('/cartitems/:email', async (req, res) => {
+        app.get('/cartitems/:email', verifyToken, async (req, res) => {
             const email = req.params.email
             const query = { email: email }
             const result = await cartCollection.find(query).toArray()
@@ -214,6 +217,47 @@ async function run() {
             const query = { _id: new ObjectId(id) }
             const result = await cartCollection.deleteOne(query)
             res.send(result)
+        })
+
+        // payment intent
+        app.post('/create-payment-intent', async (req, res) => {
+            const { price } = req.body
+
+            if (!price || isNaN(price)) {
+                return res.status(400).send({ error: 'Invalid price' });
+            }
+            try {
+                const amount = parseInt(price * 100)
+                const paymentIntent = await stripe.paymentIntents.create({
+                    amount: amount,
+                    currency: 'usd',
+                    payment_method_types: ['card']
+                })
+                res.send({
+                    clientSecret: paymentIntent.client_secret
+                })
+
+            } catch (error) {
+                console.error('Error creating payment intent:', error);
+                res.status(500).send({ error: 'Internal Server Error' });
+            }
+
+        })
+
+        // transactions
+        app.post('/payments',verifyToken, async (req, res) => {
+            const payment = req.body
+            const payResult = await paymentCollection.insertOne(payment)
+            console.log('payment info', payment)
+
+            // delete items from cart
+            const query = {_id: {
+                $in: payment.cartIds.map(id => new ObjectId(id))
+            }}
+            const deleteResult = await cartCollection.deleteMany(query) 
+            console.log(deleteResult)
+
+            res.send({payResult, deleteResult})
         })
 
 
