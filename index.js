@@ -244,32 +244,63 @@ async function run() {
 
         })
 
-        
-        
+
+
         // transactions
-        app.get('/payments/:email',verifyToken, async(req, res)=>{
+        app.get('/payments/:email', verifyToken, async (req, res) => {
             const email = req.params.email
-            const query = {email : email}
+            const query = { email: email }
+            if (req.params.email !== req.decoded.email) {
+                return res.status(403).send({ message: 'forbidden access' })
+            }
             const result = await paymentCollection.find(query).toArray()
             res.send(result)
         })
 
-        app.post('/payments',verifyToken, async (req, res) => {
+        app.post('/payments', verifyToken, async (req, res) => {
             const payment = req.body
             const payResult = await paymentCollection.insertOne(payment)
             console.log('payment info', payment)
 
             // delete items from cart
-            const query = {_id: {
-                $in: payment.cartIds.map(id => new ObjectId(id))
-            }}
-            const deleteResult = await cartCollection.deleteMany(query) 
+            const query = {
+                _id: {
+                    $in: payment.cartIds.map(id => new ObjectId(id))
+                }
+            }
+            const deleteResult = await cartCollection.deleteMany(query)
             console.log(deleteResult)
 
-            res.send({payResult, deleteResult})
+            res.send({ payResult, deleteResult })
         })
 
 
+        // admin stat
+        app.get('/admin-stats', verifyToken, verifyAdmin, async (req, res) => {
+            const users = await userCollection.estimatedDocumentCount()
+            const menuItems = await menuCollection.estimatedDocumentCount()
+            const orders = await paymentCollection.estimatedDocumentCount()
+
+            const revenue = await paymentCollection.aggregate([
+                {
+                    $group: {
+                        _id: null,
+                        totalRevenue: {
+                            $sum: '$price'
+                        }
+                    }
+                }
+            ]).toArray()
+
+            const totalRevenue = revenue.length > 0 ? revenue[0].totalRevenue : 0;
+
+            res.send({
+                users,
+                menuItems,
+                orders,
+                totalRevenue
+            })
+        })
 
 
         // Send a ping to confirm a successful connection
